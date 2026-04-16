@@ -1,0 +1,127 @@
+name: AppSec Pipeline - Issues Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operation to run"
+        required: true
+        default: list-issues
+        type: choice
+        options:
+          - list-issues
+          - list-suppressions
+          - add-suppression
+          - remove-suppression
+      repo:
+        description: "Target repository (owner/repo)"
+        required: true
+      run_id:
+        description: "GitHub Actions run ID (optional)"
+        required: false
+      tool:
+        description: "Filter by Tool"
+        required: false
+        type: choice
+        options:
+          - ""
+          - gitleaks
+          - semgrep
+          - mobsfscan
+          - trivy-sca
+          - trivy-iac
+      min_severity:
+        description: "Filter by minimum severity"
+        required: false
+        type: choice
+        options:
+          - ""
+          - CRITICAL
+          - HIGH
+          - MEDIUM
+          - LOW
+      ids:
+        description: "Comma-separated issue IDs"
+        required: false
+      reason:
+        description: "Justification for suppression/removal"
+        required: false
+      approved_by:
+        description: "Approver name"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  manage-issues:
+    name: "Issues Management"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Environment Setup
+        run: pip install pyyaml requests --quiet
+
+      - name: Execute CLI
+        env:
+          OPERATION: ${{ inputs.operation }}
+          REPO: ${{ inputs.repo }}
+          RUN_ID: ${{ inputs.run_id }}
+          TOOL: ${{ inputs.tool }}
+          MIN_SEVERITY: ${{ inputs.min_severity }}
+          IDS: ${{ inputs.ids }}
+          REASON: ${{ inputs.reason }}
+          APPROVED_BY: ${{ inputs.approved_by }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIPELINE_REPO: ${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          CMD="python3 scripts/exception_manager.py \"$OPERATION\" --repo \"$REPO\" --exception-dir exceptions"
+          
+          if [[ "$OPERATION" == "add-suppression" || "$OPERATION" == "remove-suppression" ]]; then
+            if [[ -z "$IDS" || -z "$REASON" || -z "$APPROVED_BY" ]]; then
+              echo "::error::IDs, Reason, and Approved By are required for add or remove a suppression."
+              exit 1
+            fi
+            CMD="$CMD --ids \"$IDS\" --reason \"$REASON\" --approved-by \"$APPROVED_BY\" --pipeline-repo \"$PIPELINE_REPO\""
+          fi
+
+          if [[ -n "$RUN_ID" ]]; then CMD="$CMD --run-id \"$RUN_ID\""; fi
+          if [[ -n "$TOOL" ]]; then CMD="$CMD --tool \"$TOOL\""; fi
+          if [[ -n "$MIN_SEVERITY" ]]; then CMD="$CMD --min-severity \"$MIN_SEVERITY\""; fi
+          
+          eval $CMD
+      
+      - name: Create Pull Request
+        id: cpr
+        if: ${{ inputs.operation == 'add-suppression' || inputs.operation == 'remove-suppression' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "sec: exception update for ${{ inputs.repo }}"
+          title: "Security Exception Update: ${{ inputs.repo }}"
+          branch: "security/exception-update-${{ github.run_id }}"
+          base: "main"
+          body: |
+            ### Security Exception Update
+            Automatic change triggered by **@${{ github.actor }}**.
+
+            - **Operation:** `${{ inputs.operation }}`
+            - **Target:** `${{ inputs.repo }}`
+            - **Reason:** ${{ inputs.reason }}
+            - **Approved By:** ${{ inputs.approved_by }}
+            
+      - name: Append PR URL to job summary
+        if: ${{ inputs.operation == 'add-suppression' || inputs.operation == 'remove-suppression' }}
+        run: |
+          PR_URL="${{ steps.cpr.outputs.pull-request-url }}"
+          if [ -n "$PR_URL" ]; then
+            echo "### Pull Request created" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "[View Pull Request]($PR_URL)" >> $GITHUB_STEP_SUMMARY
+          fi

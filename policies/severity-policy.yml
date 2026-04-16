@@ -1,0 +1,14 @@
+SECRETS:
+  block_on: "HIGH"
+
+SAST:
+  block_on: "HIGH"
+
+SCA:
+  block_on: "MEDIUM"
+
+IAC:
+  block_on: "HIGH"
+
+MOBILE_SAST:
+  block_on: "HIGH"

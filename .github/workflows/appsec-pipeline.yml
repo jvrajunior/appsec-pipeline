@@ -1,0 +1,197 @@
+name: AppSec Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      mobile:
+        description: "Set to true if the repository contains mobile code"
+        type: boolean
+        required: false
+        default: false
+      ref:
+        description: "Git ref to scan. Defaults to the caller ref."
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check-bypass:
+    name: "Check Bypass Request"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      bypass_reason: ${{ steps.check.outputs.bypass_reason }}
+    steps:
+      - name: Check for bypass comment on PR
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$PR_NUMBER" ]; then exit 0; fi
+
+          BYPASS_COMMENT=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq '[.[] | select(.body | test("/sec-bypass"))] | last | .body // empty')
+
+          if [ -n "$BYPASS_COMMENT" ]; then
+            JUSTIFICATION=$(echo "$BYPASS_COMMENT" | grep -oP '(?<=/sec-bypass\s).*' | head -1 | xargs)
+            if [ -n "$JUSTIFICATION" ]; then
+              echo "bypass_reason=$JUSTIFICATION" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Found /sec-bypass comment but no justification. Use: /sec-bypass <justification>"
+              exit 1
+            fi
+          fi
+
+  gitleaks:
+    name: "Secret Scanning"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Install & Run
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz" | tar -xz -C /usr/local/bin gitleaks
+          mkdir -p scan-results
+          gitleaks git --report-format sarif --report-path scan-results/gitleaks.sarif --exit-code 0 .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: result-gitleaks
+          path: scan-results/gitleaks.sarif
+          retention-days: 7
+
+  semgrep:
+    name: "SAST"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Install & Run
+        run: |
+          pip install semgrep --quiet
+          mkdir -p scan-results
+          semgrep scan --config auto --sarif --output scan-results/semgrep.sarif . || true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: result-semgrep
+          path: scan-results/semgrep.sarif
+          retention-days: 7
+
+  trivy-sca:
+    name: "SCA"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Install & Run
+        run: |
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v0.69.3/trivy_0.69.3_Linux-64bit.tar.gz" | tar -xz -C /usr/local/bin trivy
+          mkdir -p scan-results
+          trivy fs --scanners vuln --format sarif --output scan-results/trivy-sca.sarif --exit-code 0 .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: result-trivy-sca
+          path: scan-results/trivy-sca.sarif
+          retention-days: 7
+
+  trivy-iac:
+    name: "IaC"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Install & Run
+        run: |
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v0.69.3/trivy_0.69.3_Linux-64bit.tar.gz" | tar -xz -C /usr/local/bin trivy
+          mkdir -p scan-results
+          trivy fs --scanners misconfig --format sarif --output scan-results/trivy-iac.sarif --exit-code 0 .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: result-trivy-iac
+          path: scan-results/trivy-iac.sarif
+          retention-days: 7
+
+  mobsfscan:
+    name: "Mobile SAST"
+    runs-on: ubuntu-latest
+    if: ${{ inputs.mobile == true }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
+
+      - name: Install & Run
+        run: |
+          pip install mobsfscan --quiet
+          mkdir -p scan-results
+          mobsfscan --sarif -o scan-results/mobsfscan.sarif . || true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: result-mobsfscan
+          path: scan-results/mobsfscan.sarif
+          retention-days: 7
+
+  security-gate:
+    name: "Security Gate"
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [check-bypass, gitleaks, semgrep, trivy-sca, trivy-iac, mobsfscan]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/appsec-pipeline
+          path: security-config
+          sparse-checkout: |
+            policies
+            exceptions
+            scripts
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: result-*
+          path: scan-results
+          merge-multiple: true
+
+      - name: Run Gate
+        env:
+          RESULTS_DIR: scan-results
+          POLICY_PATH: security-config/policies/severity-policy.yml
+          EXCEPTION_DIR: security-config/exceptions
+          BYPASS_REASON: ${{ needs.check-bypass.outputs.bypass_reason }}
+          BYPASS_ACTOR: ${{ github.actor }}
+        run: |
+          pip install pyyaml --quiet
+          python3 security-config/scripts/gate.py
