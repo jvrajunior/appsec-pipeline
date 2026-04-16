@@ -16,9 +16,9 @@ on:
   pull_request:
     branches: ["**"]
     types: [opened, synchronize, reopened]
-    workflow_dispatch:
-    schedule:
-        - cron: '0 8 * * *'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * *'
 
 concurrency:
   group: security-${{{{ github.event.pull_request.number || github.ref }}}}
