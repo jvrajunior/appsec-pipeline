@@ -10,6 +10,9 @@ Este repositório centraliza o pipeline de Segurança de Aplicações (AppSec), 
 
 O pipeline foi pensado em funcionar como um hub, onde os repositórios individuais chamam um workflow reutilizável centralizado. Isso permite que as políticas e ferramentas de segurança sejam mantidas em um único lugar, enquanto a execução ocorre de forma nativa no fluxo de PR dos desenvolvedores.  
 
+- **Workflow de Chamada (`security-pipeline.yml`):**
+	Este workflow reside em cada repositório integrado e funciona como o ponto de entrada para a pipeline centralizada. Ele chama o `appsec-pipeline.yml` compartilhado, herdando secrets e passando parâmetros específicos do repositório. É acionado em pull requests (abertos, sincronizados ou reabertos), dispatch manual e por um agendamento diário às **5:00 AM (UTC-3)**, garantindo cobertura contínua de segurança mesmo sem atividade de PR.
+
 - **Orquestração via GitHub Actions (`appsec-pipeline.yml`):**
     O orquestrador executa as ferramentas de segurança em jobs paralelos para otimizar o tempo de resposta. Cada ferramenta exporta os resultados no formato padronizado SARIF e os armazena como artefatos.
     

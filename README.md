@@ -10,6 +10,9 @@ This repository centralizes the Application Security (AppSec) pipeline, providin
 
 The pipeline is designed to act as a hub where individual repositories call a reusable centralized workflow. This allows keeping policies and security tooling in a single place while execution runs natively in contributors' PR flows.
 
+- **Caller Workflow (`security-pipeline.yml`):**
+	This workflow lives in each integrated repository and acts as the entry point to the centralized pipeline. It calls the shared `appsec-pipeline.yml`, inheriting secrets and passing repository-specific parameters. It is triggered on pull requests (opened, synchronized, or reopened), manual dispatch, and on a daily schedule at **5:00 AM (UTC-3)**, ensuring continuous security coverage even without PR activity.
+
 - **Orchestration via GitHub Actions (`appsec-pipeline.yml`):**
 	The orchestrator runs security tools in parallel jobs to optimize response time. Each tool exports results in the standardized SARIF format and stores them as artifacts.
 
