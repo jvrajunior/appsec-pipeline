@@ -1,1 +1,13 @@
 suppressions:
+- id: 7d62f3
+  tool: trivy-iac
+  repository: jvrajunior/webtest
+  reason: Just a test
+  approved_by: JV
+  approved_on: '2026-04-16'
+- id: cb3fed
+  tool: trivy-sca
+  repository: jvrajunior/webtest
+  reason: Just a test
+  approved_by: JV
+  approved_on: '2026-04-16'
