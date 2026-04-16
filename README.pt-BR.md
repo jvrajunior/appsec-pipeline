@@ -58,3 +58,14 @@ Caso um item bloqueante seja um falso positivo ou risco aceito, o time de AppSec
 ### Bypass de Emergência
 
 Em situações críticas (ex: _hotfix_ onde não há tempo para o processo de exceção), o time de AppSec pode contornar o bloqueio comentando `/sec-bypass <justificativa>` no PR. O job `check-bypass` valida o comando e o GATE libera o deploy, registrando o responsável e o motivo para futuras auditorias.
+
+---
+
+## Repositórios Vulneráveis Integrados
+
+Abaixo estão os 4 repositórios vulneráveis usados para integração e testes do pipeline:
+
+- **OWASP Juice Shop (Node.js/TypeScript - Web)** — https://github.com/jvrajunior/juice-shop
+- **VAmPI (Python/Flask - API)** — https://github.com/jvrajunior/VAmPI
+- **Terragoat (Terraform - AWS)** — https://github.com/jvrajunior/terragoat
+- **diva-android (Java - Android)** — https://github.com/jvrajunior/diva-android

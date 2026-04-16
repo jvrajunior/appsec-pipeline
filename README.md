@@ -57,3 +57,12 @@ If a blocking finding is a false positive or an accepted risk, AppSec can suppre
 ### Emergency Bypass
 
 In critical situations (e.g., a hotfix with no time to go through exception flow), AppSec may bypass the gate by commenting `/sec-bypass <justification>` on the PR. The `check-bypass` job validates the command and the GATE allows the deployment while logging the responsible user and justification for auditing.
+
+## Integrated Vulnerable Repositories
+
+Below are the 4 vulnerable repositories used for pipeline integration and testing:
+
+- **OWASP Juice Shop (Node.js/TypeScript - Web)** — https://github.com/jvrajunior/juice-shop
+- **VAmPI (Python/Flask - API)** — https://github.com/jvrajunior/VAmPI
+- **Terragoat (Terraform - AWS)** — https://github.com/jvrajunior/terragoat
+- **diva-android (Java - Android)** — https://github.com/jvrajunior/diva-android
