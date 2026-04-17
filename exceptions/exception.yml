@@ -23,3 +23,9 @@ suppressions:
   reason: Apenas mais um teste 1
   approved_by: Joao Vieira
   approved_on: '2026-04-17'
+- id: a23630
+  tool: trivy-sca
+  repository: jvrajunior/terragoat
+  reason: Falso positivo
+  approved_by: JV
+  approved_on: '2026-04-17'
